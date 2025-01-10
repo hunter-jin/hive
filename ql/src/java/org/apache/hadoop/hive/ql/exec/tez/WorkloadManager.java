@@ -17,51 +17,18 @@
  */
 package org.apache.hadoop.hive.ql.exec.tez;
 
-import org.apache.hadoop.hive.metastore.api.WMPoolSchedulingPolicy;
-import org.apache.hadoop.hive.metastore.utils.MetaStoreUtils;
-
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.google.common.math.DoubleMath;
-import com.google.common.util.concurrent.FutureCallback;
-import com.google.common.util.concurrent.Futures;
-import com.google.common.util.concurrent.ListenableFuture;
-import com.google.common.util.concurrent.SettableFuture;
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
-
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.IdentityHashMap;
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.locks.Condition;
-import java.util.concurrent.locks.ReentrantLock;
-
+import com.google.common.util.concurrent.*;
 import org.apache.commons.lang.StringUtils;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.hive.llap.tezplugins.LlapTaskSchedulerService;
-import org.apache.hadoop.hive.metastore.api.WMFullResourcePlan;
-import org.apache.hadoop.hive.metastore.api.WMPool;
-import org.apache.hadoop.hive.metastore.api.WMPoolTrigger;
-import org.apache.hadoop.hive.metastore.api.WMTrigger;
+import org.apache.hadoop.hive.metastore.api.*;
+import org.apache.hadoop.hive.metastore.utils.MetaStoreUtils;
 import org.apache.hadoop.hive.ql.exec.tez.AmPluginNode.AmPluginInfo;
 import org.apache.hadoop.hive.ql.exec.tez.TezSessionState.HiveResources;
 import org.apache.hadoop.hive.ql.exec.tez.UserPoolMapping.MappingInput;
@@ -69,11 +36,7 @@ import org.apache.hadoop.hive.ql.exec.tez.WmEvent.EventType;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.session.KillQuery;
 import org.apache.hadoop.hive.ql.session.SessionState;
-import org.apache.hadoop.hive.ql.wm.ExecutionTrigger;
-import org.apache.hadoop.hive.ql.wm.SessionTriggerProvider;
-import org.apache.hadoop.hive.ql.wm.Trigger;
-import org.apache.hadoop.hive.ql.wm.TriggerActionHandler;
-import org.apache.hadoop.hive.ql.wm.WmContext;
+import org.apache.hadoop.hive.ql.wm.*;
 import org.apache.hadoop.metrics2.MetricsSystem;
 import org.apache.hadoop.metrics2.lib.DefaultMetricsSystem;
 import org.apache.hive.common.util.Ref;
@@ -83,6 +46,12 @@ import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.map.SerializationConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.ReentrantLock;
 
 
 /** Workload management entry point for HS2.
@@ -1092,7 +1061,7 @@ public class WorkloadManager extends TezSessionPoolSession.AbstractTriggerValida
   }
 
   private void failOnFutureFailure(ListenableFuture<?> future) {
-    Futures.addCallback(future, FATAL_ERROR_CALLBACK);
+    Futures.addCallback(future, FATAL_ERROR_CALLBACK, MoreExecutors.directExecutor());
   }
 
   private void queueGetRequestOnMasterThread(
@@ -1925,7 +1894,7 @@ public class WorkloadManager extends TezSessionPoolSession.AbstractTriggerValida
 
     public void start() throws Exception {
       ListenableFuture<WmTezSession> getFuture = tezAmPool.getSessionAsync();
-      Futures.addCallback(getFuture, this);
+      Futures.addCallback(getFuture, this, MoreExecutors.directExecutor());
     }
 
     @Override
@@ -1979,7 +1948,7 @@ public class WorkloadManager extends TezSessionPoolSession.AbstractTriggerValida
       case GETTING: {
         ListenableFuture<WmTezSession> waitFuture = session.waitForAmRegistryAsync(
             amRegistryTimeoutMs, timeoutPool);
-        Futures.addCallback(waitFuture, this);
+        Futures.addCallback(waitFuture, this, MoreExecutors.directExecutor());
         break;
       }
       case WAITING_FOR_REGISTRY: {

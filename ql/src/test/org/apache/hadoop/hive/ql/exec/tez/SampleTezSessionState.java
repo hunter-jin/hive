@@ -19,17 +19,15 @@
 package org.apache.hadoop.hive.ql.exec.tez;
 
 
-import com.google.common.util.concurrent.Futures;
-import com.google.common.util.concurrent.FutureCallback;
-import com.google.common.util.concurrent.ListenableFuture;
-import com.google.common.util.concurrent.SettableFuture;
-import java.io.IOException;
-import java.util.concurrent.ScheduledExecutorService;
-import javax.security.auth.login.LoginException;
+import com.google.common.util.concurrent.*;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.shims.Utils;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.tez.dag.api.TezException;
+
+import javax.security.auth.login.LoginException;
+import java.io.IOException;
+import java.util.concurrent.ScheduledExecutorService;
 
 
 /**
@@ -128,7 +126,7 @@ public class SampleTezSessionState extends WmTezSession {
       public void onFailure(Throwable t) {
         future.setException(t);
       }
-    });
+    }, MoreExecutors.directExecutor());
     return future;
   }
 

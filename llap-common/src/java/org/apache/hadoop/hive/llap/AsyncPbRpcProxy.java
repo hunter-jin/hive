@@ -14,31 +14,14 @@
 
 package org.apache.hadoop.hive.llap;
 
-import java.io.IOException;
-import java.security.PrivilegedAction;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CancellationException;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.Condition;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
-
-import javax.net.SocketFactory;
-
+import com.google.common.annotations.VisibleForTesting;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.RemovalListener;
+import com.google.common.cache.RemovalNotification;
+import com.google.common.util.concurrent.*;
+import com.google.protobuf.Message;
 import org.apache.hadoop.conf.Configuration;
-// TODO: LlapNodeId is just a host+port pair; we could make this class more generic.
 import org.apache.hadoop.io.retry.RetryPolicies;
 import org.apache.hadoop.io.retry.RetryPolicy;
 import org.apache.hadoop.net.NetUtils;
@@ -50,18 +33,16 @@ import org.apache.hadoop.service.AbstractService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.annotations.VisibleForTesting;
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.RemovalListener;
-import com.google.common.cache.RemovalNotification;
-import com.google.common.util.concurrent.FutureCallback;
-import com.google.common.util.concurrent.Futures;
-import com.google.common.util.concurrent.ListenableFuture;
-import com.google.common.util.concurrent.ListeningExecutorService;
-import com.google.common.util.concurrent.MoreExecutors;
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import com.google.protobuf.Message;
+import javax.net.SocketFactory;
+import java.io.IOException;
+import java.security.PrivilegedAction;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 public abstract class AsyncPbRpcProxy<ProtocolType, TokenType extends TokenIdentifier> extends AbstractService {
   private static final Logger LOG = LoggerFactory.getLogger(AsyncPbRpcProxy.class);
@@ -74,6 +55,24 @@ public abstract class AsyncPbRpcProxy<ProtocolType, TokenType extends TokenIdent
   private volatile ListenableFuture<Void> requestManagerFuture;
   private final Token<TokenType> token;
   private final String tokenUser;
+
+  @Override
+  public void serviceStart() {
+    requestManagerFuture = requestManagerExecutor.submit(requestManager);
+    Futures.addCallback(requestManagerFuture, new FutureCallback<Void>() {
+      @Override
+      public void onSuccess(Void result) {
+        LOG.info("RequestManager shutdown");
+      }
+
+      @Override
+      public void onFailure(Throwable t) {
+        if (!(t instanceof CancellationException)) {
+          LOG.warn("RequestManager shutdown with error", t);
+        }
+      }
+    }, MoreExecutors.directExecutor());
+  }
 
   @VisibleForTesting
   public static class RequestManager implements Callable<Void> {
@@ -171,7 +170,7 @@ public abstract class AsyncPbRpcProxy<ProtocolType, TokenType extends TokenIdent
           CallableRequest<T, U> request, LlapNodeId nodeId) {
         ListenableFuture<U> future = executor.submit(request);
         Futures.addCallback(future, new ResponseCallback<U>(
-            request.getCallback(), nodeId, this));
+                request.getCallback(), nodeId, this), MoreExecutors.directExecutor());
       }
 
       @VisibleForTesting
@@ -267,24 +266,6 @@ public abstract class AsyncPbRpcProxy<ProtocolType, TokenType extends TokenIdent
         }
       }
     }
-
-  @Override
-  public void serviceStart() {
-    requestManagerFuture = requestManagerExecutor.submit(requestManager);
-    Futures.addCallback(requestManagerFuture, new FutureCallback<Void>() {
-      @Override
-      public void onSuccess(Void result) {
-        LOG.info("RequestManager shutdown");
-      }
-
-      @Override
-      public void onFailure(Throwable t) {
-        if (!(t instanceof CancellationException)) {
-          LOG.warn("RequestManager shutdown with error", t);
-        }
-      }
-    });
-  }
 
   @Override
   public void serviceStop() {

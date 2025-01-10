@@ -14,40 +14,7 @@
 
 package org.apache.hadoop.hive.llap.daemon.impl;
 
-import org.apache.hadoop.hive.llap.protocol.LlapTaskUmbilicalProtocol.BooleanArray;
-import org.apache.hadoop.hive.llap.protocol.LlapTaskUmbilicalProtocol.TezAttemptArray;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.HashSet;
-import java.util.Set;
-
-import javax.net.SocketFactory;
-
-import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.security.PrivilegedExceptionAction;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.CancellationException;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.DelayQueue;
-import java.util.concurrent.Delayed;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
-
-import com.google.common.util.concurrent.FutureCallback;
-import com.google.common.util.concurrent.Futures;
-import com.google.common.util.concurrent.ListenableFuture;
-import com.google.common.util.concurrent.ListeningExecutorService;
-import com.google.common.util.concurrent.MoreExecutors;
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
-
+import com.google.common.util.concurrent.*;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
@@ -55,6 +22,8 @@ import org.apache.hadoop.hive.llap.DaemonId;
 import org.apache.hadoop.hive.llap.LlapNodeId;
 import org.apache.hadoop.hive.llap.daemon.QueryFailedHandler;
 import org.apache.hadoop.hive.llap.protocol.LlapTaskUmbilicalProtocol;
+import org.apache.hadoop.hive.llap.protocol.LlapTaskUmbilicalProtocol.BooleanArray;
+import org.apache.hadoop.hive.llap.protocol.LlapTaskUmbilicalProtocol.TezAttemptArray;
 import org.apache.hadoop.io.BooleanWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.io.retry.RetryPolicies;
@@ -70,6 +39,18 @@ import org.apache.tez.common.security.JobTokenIdentifier;
 import org.apache.tez.dag.records.TezTaskAttemptID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import javax.net.SocketFactory;
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.security.PrivilegedExceptionAction;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Responsible for communicating with various AMs.
@@ -174,7 +155,7 @@ public class AMReporter extends AbstractService {
           Thread.getDefaultUncaughtExceptionHandler().uncaughtException(Thread.currentThread(), t);
         }
       }
-    });
+    }, MoreExecutors.directExecutor());
     // TODO: why is this needed? we could just save the host and port?
     nodeId = LlapNodeId.getInstance(localAddress.get().getHostName(), localAddress.get().getPort());
     LOG.info("AMReporter running with DaemonId: {}, NodeId: {}", daemonId, nodeId);
@@ -274,7 +255,7 @@ public class AMReporter extends AbstractService {
         LOG.warn("Failed to send taskKilled for {}. The attempt will likely time out.",
             taskAttemptId);
       }
-    });
+    }, MoreExecutors.directExecutor());
   }
 
   public void queryComplete(QueryIdentifier queryIdentifier) {
@@ -342,7 +323,7 @@ public class AMReporter extends AbstractService {
                     amNodeInfo.amNodeId, currentQueryIdentifier, t);
                   queryFailedHandler.queryFailed(currentQueryIdentifier);
                 }
-              });
+              }, MoreExecutors.directExecutor());
             }
           }
         } catch (InterruptedException e) {
