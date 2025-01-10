@@ -255,7 +255,7 @@ public class Main {
   // Configure the AuthFilter with the Kerberos params iff security
   // is enabled.
   public FilterHolder makeAuthFilter() throws IOException {
-    FilterHolder authFilter = new FilterHolder(AuthFilter.class);
+    FilterHolder authFilter = new FilterHolder((Class<? extends Filter>) AuthFilter.class);
     UserNameHandler.allowAnonymous(authFilter);
     if (UserGroupInformation.isSecurityEnabled()) {
       //http://hadoop.apache.org/docs/r1.1.1/api/org/apache/hadoop/security/authentication/server/AuthenticationFilter.html
